@@ -11,8 +11,29 @@
         body {
             font-family: 'Poppins', sans-serif;
             background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+            background-attachment: fixed;
+            background-size: cover;
+            background-position: center;
             color: #fff;
             overflow-x: hidden;
+            transition: background 0.5s ease;
+        }
+
+        /* Capa superpuesta para asegurar contraste si se usa imagen de fondo */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 15, 26, 0.7);
+            z-index: -1;
+            display: none;
+        }
+
+        body.has-bg::before {
+            display: block;
         }
 
         .canvas-container {
@@ -120,6 +141,20 @@
     <div class="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         <div class="lg:col-span-3 space-y-6 order-3 lg:order-1">
+            <div class="glass-card p-6">
+                <h3 class="text-xs font-semibold opacity-50 uppercase tracking-widest mb-4">Personalización</h3>
+                <div class="space-y-3">
+                    <label class="block">
+                        <span class="text-[11px] opacity-60 block mb-2">Imagen de Fondo</span>
+                        <input type="file" id="bgInput" accept="image/*" class="hidden" onchange="changeBackground(this)">
+                        <button onclick="document.getElementById('bgInput').click()" class="w-full py-2 px-4 rounded-lg border border-white/20 bg-white/5 text-[11px] hover:bg-white/10 transition-all flex items-center justify-center gap-2">
+                            🖼️ Cargar Imagen
+                        </button>
+                    </label>
+                    <button onclick="resetBackground()" class="w-full text-[9px] opacity-40 hover:opacity-100 transition-opacity">Restablecer original</button>
+                </div>
+            </div>
+
             <div class="glass-card p-6">
                 <h3 class="text-xs font-semibold opacity-50 uppercase tracking-widest mb-4">Modo de Juego</h3>
                 <div class="grid grid-cols-1 gap-2">
@@ -246,6 +281,24 @@
             newParticipantInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
         }
 
+        // Función para cambiar el fondo
+        function changeBackground(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.body.style.backgroundImage = `url('${e.target.result}')`;
+                    document.body.classList.add('has-bg');
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function resetBackground() {
+            document.body.style.backgroundImage = "radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%)";
+            document.body.classList.remove('has-bg');
+            document.getElementById('bgInput').value = "";
+        }
+
         function setMode(mode) {
             currentGameMode = mode;
             document.getElementById('modeWinnerBtn').classList.toggle('mode-active', mode === 'winner');
@@ -328,7 +381,7 @@
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
             const outsideRadius = 230;
-            const textRadius = 210; // Acercamos el texto un poco más al borde
+            const textRadius = 210; 
             const insideRadius = 50;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -342,7 +395,7 @@
             currentOptions.forEach((option, i) => {
                 const angle = startAngle + i * arc;
                 
-                // Dibujar el segmento
+                // Segmento
                 ctx.beginPath();
                 ctx.arc(centerX, centerY, outsideRadius, angle, angle + arc, false);
                 ctx.arc(centerX, centerY, insideRadius, angle + arc, angle, true);
@@ -352,26 +405,23 @@
                 ctx.lineWidth = 1;
                 ctx.stroke();
 
-                // Dibujar el texto vertical (radial)
+                // Texto radial
                 ctx.save();
                 ctx.fillStyle = (colors[i % colors.length] === "#ffd700" || colors[i % colors.length] === "#c5a059") ? "#000" : "#fff";
                 
-                // Centramos el punto de rotación en el centro de la ruleta
                 ctx.translate(centerX, centerY);
-                // Rotamos el contexto al ángulo medio del segmento
                 ctx.rotate(angle + arc / 2);
                 
                 ctx.font = 'bold 16px Poppins';
-                ctx.textAlign = "right"; // Alineamos a la derecha para que el texto nazca desde fuera hacia adentro
+                ctx.textAlign = "right"; 
                 
                 const nameText = option.name || "";
-                // El texto se dibuja desde el radio exterior hacia adentro
                 ctx.fillText(nameText, textRadius, 5); 
                 
                 ctx.restore();
             });
 
-            // Centro de la ruleta
+            // Centro
             ctx.beginPath();
             ctx.arc(centerX, centerY, insideRadius, 0, Math.PI * 2);
             ctx.fillStyle = "#1a1a2e";
