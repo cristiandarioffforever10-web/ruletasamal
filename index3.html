@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruleta de Premios Elite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .canvas-container {
+            position: relative;
+            filter: drop-shadow(0 0 30px rgba(0, 0, 0, 0.5));
+        }
+
+        #wheel-pointer {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+        }
+
+        .btn-glow {
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+        }
+
+        .btn-glow:hover {
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .btn-glow:active {
+            transform: translateY(1px);
+        }
+
+        @keyframes confetti {
+            0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+        .confetti {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 215, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        .winner-item {
+            border: 1px solid rgba(255, 215, 0, 0.5) !important;
+            background: rgba(255, 215, 0, 0.1) !important;
+        }
+
+        .eliminated-item {
+            border: 1px solid rgba(239, 68, 68, 0.5) !important;
+            background: rgba(239, 68, 68, 0.1) !important;
+            opacity: 0.7;
+        }
+
+        .mode-active {
+            background: rgba(255, 215, 0, 0.2);
+            border-color: rgba(255, 215, 0, 0.5);
+            color: #ffd700;
+        }
+
+        .force-selected {
+            background: rgba(16, 185, 129, 0.2) !important;
+            border-color: rgba(16, 185, 129, 0.5) !important;
+            color: #10b981;
+        }
+
+        .floating-control {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 50;
+            width: 220px;
+            max-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Control de Selección Forzada -->
+    <div class="floating-control glass-card p-4 border-emerald-500/20 bg-emerald-500/5 shadow-2xl">
+        <h3 class="text-[10px] font-semibold text-emerald-500 uppercase tracking-widest mb-3">Control de Selección</h3>
+        <p class="text-[9px] opacity-60 mb-2 italic">Forzar resultado:</p>
+        <div id="forceSelectionList" class="space-y-1 overflow-y-auto pr-2 custom-scrollbar flex-1"></div>
+    </div>
+
+    <div class="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        <div class="lg:col-span-3 space-y-6 order-3 lg:order-1">
+            <div class="glass-card p-6">
+                <h3 class="text-xs font-semibold opacity-50 uppercase tracking-widest mb-4">Modo de Juego</h3>
+                <div class="grid grid-cols-1 gap-2">
+                    <button id="modeWinnerBtn" onclick="setMode('winner')" class="w-full py-2 px-4 rounded-lg border border-white/10 text-sm font-medium transition-all mode-active">
+                        🏆 Modo Ganador
+                    </button>
+                    <button id="modeEliminateBtn" onclick="setMode('eliminate')" class="w-full py-2 px-4 rounded-lg border border-white/10 text-sm font-medium transition-all">
+                        💀 Modo Eliminación
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-card p-6">
+                <h3 class="text-xs font-semibold opacity-50 uppercase tracking-widest mb-4">Registro</h3>
+                <ul id="history" class="space-y-2 text-[11px] max-h-48 overflow-y-auto pr-2 custom-scrollbar"></ul>
+            </div>
+        </div>
+
+        <div class="lg:col-span-5 flex flex-col items-center order-1 lg:order-2 self-center">
+            <div class="canvas-container scale-75 md:scale-100">
+                <svg id="wheel-pointer" width="40" height="40" viewBox="0 0 40 40">
+                    <path d="M20 40 L5 10 A15 15 0 1 1 35 10 Z" fill="#FFD700" stroke="#000" stroke-width="2"/>
+                </svg>
+                <canvas id="wheelCanvas" width="500" height="500"></canvas>
+            </div>
+            
+            <button id="spinBtn" onclick="spinWheel()" class="mt-8 px-12 py-4 bg-yellow-500 text-black font-bold rounded-full text-xl btn-glow uppercase tracking-wider">
+                Girar Ruleta
+            </button>
+        </div>
+
+        <div class="lg:col-span-4 glass-card p-6 order-2 lg:order-3 h-full lg:min-h-[600px] flex flex-col">
+            <h2 class="text-xl font-semibold mb-4 text-yellow-500 flex justify-between items-center">
+                Participantes
+                <span id="participantCount" class="text-xs bg-yellow-500/20 px-2 py-1 rounded text-yellow-200">0</span>
+            </h2>
+            
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="newParticipantInput" placeholder="Nuevo nombre..." class="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-500 transition-colors">
+                <button onclick="addParticipant()" class="bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold text-sm hover:bg-yellow-400 transition-colors">+</button>
+            </div>
+
+            <div id="participantsList" class="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar max-h-[400px] lg:max-h-none"></div>
+            
+            <div class="mt-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <p class="text-[10px] opacity-70 italic text-center">
+                    Elimina manualmente con la ✕ para aplicar cambios definitivos en la ruleta.
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="customModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="glass-card p-8 max-w-md w-full text-center border-yellow-500/30">
+            <h2 id="modalTitle" class="text-3xl font-bold text-yellow-500 mb-4 uppercase tracking-tighter">¡TITULO!</h2>
+            <div id="modalText" class="text-4xl font-bold mb-8 text-white"></div>
+            <p id="modalSubtext" class="text-sm opacity-60 mb-6 italic"></p>
+            <button onclick="closeModal()" class="px-12 py-4 bg-yellow-500 text-black font-bold rounded-xl hover:scale-105 transition-transform uppercase tracking-widest shadow-lg shadow-yellow-500/20">CONTINUAR</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const spinBtn = document.getElementById('spinBtn');
+        const historyList = document.getElementById('history');
+        const customModal = document.getElementById('customModal');
+        const modalText = document.getElementById('modalText');
+        const participantsList = document.getElementById('participantsList');
+        const forceSelectionList = document.getElementById('forceSelectionList');
+        const newParticipantInput = document.getElementById('newParticipantInput');
+        const participantCountLabel = document.getElementById('participantCount');
+
+        // Configuración de Sonido
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let lastSegmentIndex = -1;
+
+        function playTickSound() {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1);
+
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        }
+
+        let currentGameMode = 'winner'; 
+        let forcedWinnerIndex = null; 
+
+        let participants = [
+            { name: "Juan", isWinner: false, isEliminated: false },
+            { name: "María", isWinner: false, isEliminated: false },
+            { name: "Carlos", isWinner: false, isEliminated: false },
+            { name: "Ana", isWinner: false, isEliminated: false },
+            { name: "Luis", isWinner: false, isEliminated: false },
+            { name: "Elena", isWinner: false, isEliminated: false },
+            { name: "Pedro", isWinner: false, isEliminated: false },
+            { name: "Sofía", isWinner: false, isEliminated: false }
+        ];
+
+        let startAngle = 0;
+        let arc = 0;
+        let spinTimeout = null;
+        let spinAngleStart = 0;
+        let spinTime = 0;
+        let spinTimeTotal = 0;
+
+        const colors = ["#1a1a2e", "#c5a059", "#16213e", "#e94560", "#0f3460", "#ffd700", "#222831", "#393e46"];
+
+        function init() {
+            renderParticipants();
+            renderForceSelection();
+            updateWheel();
+            newParticipantInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
+        }
+
+        function setMode(mode) {
+            currentGameMode = mode;
+            document.getElementById('modeWinnerBtn').classList.toggle('mode-active', mode === 'winner');
+            document.getElementById('modeEliminateBtn').classList.toggle('mode-active', mode === 'eliminate');
+        }
+
+        function renderForceSelection() {
+            forceSelectionList.innerHTML = '';
+            
+            const randomBtn = document.createElement('button');
+            randomBtn.className = `w-full text-left px-3 py-1.5 text-[10px] rounded border transition-all mb-1 ${forcedWinnerIndex === null ? 'force-selected border-emerald-500 font-bold' : 'border-white/10 hover:bg-white/5'}`;
+            randomBtn.innerText = "🎲 Aleatorio";
+            randomBtn.onclick = () => { forcedWinnerIndex = null; renderForceSelection(); };
+            forceSelectionList.appendChild(randomBtn);
+
+            participants.forEach((p, index) => {
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left px-3 py-1.5 text-[10px] rounded border transition-all ${forcedWinnerIndex === index ? 'force-selected border-emerald-500 font-bold' : 'border-white/10 hover:bg-white/5'}`;
+                btn.innerText = `🎯 ${p.name}`;
+                btn.onclick = () => { forcedWinnerIndex = index; renderForceSelection(); };
+                forceSelectionList.appendChild(btn);
+            });
+        }
+
+        function renderParticipants() {
+            participantsList.innerHTML = '';
+            participants.forEach((p, index) => {
+                const div = document.createElement('div');
+                let statusClass = p.isWinner ? 'winner-item' : (p.isEliminated ? 'eliminated-item' : '');
+                div.className = `flex items-center gap-2 group transition-all duration-300 p-1 rounded-lg ${statusClass}`;
+                div.innerHTML = `
+                    <div class="flex-1 flex items-center bg-white/5 border border-white/5 rounded-lg px-3 py-2 transition-all hover:bg-white/10">
+                        <input type="text" value="${p.name}" 
+                            onchange="editParticipant(${index}, this.value)"
+                            class="bg-transparent border-none flex-1 text-sm focus:outline-none">
+                        ${p.isWinner ? '<span class="text-[9px] bg-yellow-500 text-black px-1 rounded font-bold ml-2">WIN</span>' : ''}
+                        ${p.isEliminated ? '<span class="text-[9px] bg-red-500 text-white px-1 rounded font-bold ml-2">OUT</span>' : ''}
+                    </div>
+                    <button onclick="removeParticipant(${index})" class="opacity-40 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all px-2">✕</button>
+                `;
+                participantsList.appendChild(div);
+            });
+            participantCountLabel.innerText = participants.length;
+        }
+
+        function addParticipant() {
+            const name = newParticipantInput.value.trim();
+            if (name) {
+                participants.push({ name: name, isWinner: false, isEliminated: false });
+                newParticipantInput.value = '';
+                renderParticipants();
+                renderForceSelection();
+                updateWheel();
+            }
+        }
+
+        function editParticipant(index, newName) {
+            if (newName.trim()) participants[index].name = newName.trim();
+            else participants.splice(index, 1);
+            renderParticipants();
+            renderForceSelection();
+            updateWheel();
+        }
+
+        function removeParticipant(index) {
+            participants.splice(index, 1);
+            if (forcedWinnerIndex === index) forcedWinnerIndex = null;
+            renderParticipants();
+            renderForceSelection();
+            updateWheel();
+        }
+
+        function updateWheel() {
+            const currentOptions = participants.length > 0 ? participants : [{ name: "Añadir nombres" }];
+            arc = Math.PI * 2 / currentOptions.length;
+            drawWheel(currentOptions);
+        }
+
+        function drawWheel(currentOptions) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const outsideRadius = 230;
+            const textRadius = 210; // Acercamos el texto un poco más al borde
+            const insideRadius = 50;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Sombra exterior
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, outsideRadius + 10, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(0,0,0,0.3)";
+            ctx.fill();
+
+            currentOptions.forEach((option, i) => {
+                const angle = startAngle + i * arc;
+                
+                // Dibujar el segmento
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, outsideRadius, angle, angle + arc, false);
+                ctx.arc(centerX, centerY, insideRadius, angle + arc, angle, true);
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Dibujar el texto vertical (radial)
+                ctx.save();
+                ctx.fillStyle = (colors[i % colors.length] === "#ffd700" || colors[i % colors.length] === "#c5a059") ? "#000" : "#fff";
+                
+                // Centramos el punto de rotación en el centro de la ruleta
+                ctx.translate(centerX, centerY);
+                // Rotamos el contexto al ángulo medio del segmento
+                ctx.rotate(angle + arc / 2);
+                
+                ctx.font = 'bold 16px Poppins';
+                ctx.textAlign = "right"; // Alineamos a la derecha para que el texto nazca desde fuera hacia adentro
+                
+                const nameText = option.name || "";
+                // El texto se dibuja desde el radio exterior hacia adentro
+                ctx.fillText(nameText, textRadius, 5); 
+                
+                ctx.restore();
+            });
+
+            // Centro de la ruleta
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, insideRadius, 0, Math.PI * 2);
+            ctx.fillStyle = "#1a1a2e";
+            ctx.fill();
+            ctx.strokeStyle = "#c5a059";
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+
+        function spinWheel() {
+            if (spinTimeout || participants.length === 0) return;
+            
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            spinBtn.disabled = true;
+            spinBtn.innerText = "Girando...";
+            
+            spinTime = 0;
+            spinTimeTotal = 4000;
+            
+            startAngle = startAngle % (Math.PI * 2);
+            const baseRotations = (Math.PI * 2) * (5 + Math.floor(Math.random() * 3));
+            
+            if (forcedWinnerIndex !== null) {
+                const targetCenter = (forcedWinnerIndex * arc) + (arc / 2);
+                let extraRotation = (1.5 * Math.PI) - targetCenter - startAngle;
+                while (extraRotation < 0) extraRotation += (Math.PI * 2);
+                spinAngleStart = baseRotations + extraRotation;
+            } else {
+                spinAngleStart = baseRotations + (Math.random() * Math.PI * 2);
+            }
+
+            window.initialSpinAngle = startAngle;
+            lastSegmentIndex = -1;
+            rotateWheel();
+        }
+
+        function rotateWheel() {
+            spinTime += 30;
+            if (spinTime >= spinTimeTotal) {
+                stopRotateWheel();
+                return;
+            }
+            
+            const ratio = spinTime / spinTimeTotal;
+            const ease = 1 - Math.pow(1 - ratio, 3);
+            
+            startAngle = window.initialSpinAngle + (spinAngleStart * ease);
+            
+            const normalizedAngle = (startAngle % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2);
+            const relativeToPointer = (1.5 * Math.PI - normalizedAngle + (Math.PI * 2)) % (Math.PI * 2);
+            const currentSegment = Math.floor(relativeToPointer / arc) % participants.length;
+            
+            if (currentSegment !== lastSegmentIndex) {
+                playTickSound();
+                lastSegmentIndex = currentSegment;
+            }
+            
+            updateWheel();
+            spinTimeout = setTimeout(rotateWheel, 30);
+        }
+
+        function stopRotateWheel() {
+            clearTimeout(spinTimeout);
+            spinTimeout = null;
+            spinBtn.disabled = false;
+            spinBtn.innerText = "Girar Ruleta";
+            window.initialSpinAngle = null;
+
+            const finalNormalized = (startAngle % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2);
+            const relativeToPointer = (1.5 * Math.PI - finalNormalized + (Math.PI * 2)) % (Math.PI * 2);
+            const finalIndex = Math.floor(relativeToPointer / arc) % participants.length;
+            
+            const selected = participants[finalIndex];
+            
+            if (currentGameMode === 'winner') {
+                selected.isWinner = true;
+                showResult(selected.name, "¡GANADOR!", "Marcado en la lista.");
+            } else {
+                selected.isEliminated = true;
+                showResult(selected.name, "ELIMINADO", "Borrado manual pendiente.");
+            }
+            
+            forcedWinnerIndex = null;
+            renderForceSelection();
+            renderParticipants();
+        }
+
+        function showResult(name, title, subtext) {
+            const li = document.createElement('li');
+            li.className = `flex justify-between items-center bg-white/5 p-1 px-2 rounded border-l-2 ${currentGameMode === 'winner' ? 'border-yellow-500' : 'border-red-500'}`;
+            li.innerHTML = `<span>${currentGameMode === 'winner' ? '🏆' : '💀'} ${name}</span> <span class="opacity-30">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+            historyList.prepend(li);
+
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalTitle').className = `text-3xl font-bold mb-4 uppercase tracking-tighter ${currentGameMode === 'winner' ? 'text-yellow-500' : 'text-red-500'}`;
+            modalText.innerText = name;
+            document.getElementById('modalSubtext').innerText = subtext;
+            customModal.classList.remove('hidden');
+            customModal.classList.add('flex');
+
+            if (currentGameMode === 'winner') createConfetti();
+            
+            if ('speechSynthesis' in window) {
+                const phrase = currentGameMode === 'winner' ? `Ganador: ${name}` : `Participante ${name} eliminado`;
+                const msg = new SpeechSynthesisUtterance(phrase);
+                msg.lang = 'es-ES';
+                window.speechSynthesis.speak(msg);
+            }
+        }
+
+        function closeModal() {
+            customModal.classList.add('hidden');
+            customModal.classList.remove('flex');
+        }
+
+        function createConfetti() {
+            for (let i = 0; i < 40; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.left = Math.random() * 100 + 'vw';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.animation = `confetti ${Math.random() * 2 + 2}s linear forwards`;
+                document.body.appendChild(confetti);
+                setTimeout(() => confetti.remove(), 3500);
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
